@@ -85,6 +85,14 @@ aware (deterministic-first, model tiering, throttled concurrency).
 - Scheduled backup workflow (non-AI): git push of vault history to a remote
   (private GitHub repo or local bare repo on external/NAS storage) +
   separate rsync/rclone leg for gitignored attachments.
+- On-demand export workflow: given one or more notes, produce a clean,
+  portable copy (resolved wikilinks/embeds, GitHub-compatible callouts,
+  vault-librarian-internal frontmatter/directives stripped) suitable for
+  sharing or publishing outside Obsidian (e.g. a public GitHub repo).
+  Exposed as both a CLI command and an MCP tool ("agent skill") once the
+  MCP server exists. Deterministic-first, same as the reactive workflows;
+  distinct from the backup workflow above (that pushes the whole vault's
+  private history, this produces a small curated public subset).
 
 ### Phase 5+ — Nice to have
 - Obsidian companion plugin (subsumes terminal/web UI ask — bigger
@@ -125,6 +133,7 @@ aware (deterministic-first, model tiering, throttled concurrency).
 | FR-28 | Check required prerequisites (Node.js + `mmdc`) at startup and fail with a clear, actionable error rather than an obscure failure on first mermaid block | 1 |
 | FR-29 | Provide a native background-service deployment path (macOS `launchd` user agent / Linux systemd `--user` unit) as the default, plus a documented podman/podman-compose alternative | 1 |
 | FR-30 | Organizational agent proposes Map of Content (MOC) hub-note creation/updates for topical clusters of related or orphaned notes (using the vector KB), presented in `Todo.md` for approval alongside move/rename proposals | 3 |
+| FR-31 | On-demand export workflow: given one or more notes (optionally following outgoing links to a bounded depth), produce GitHub-ready markdown -- resolve `[[wikilinks]]`/`![[embeds]]` to standard links/images, degrade non-GitHub-supported callouts to plain blockquotes, strip vault-librarian-internal frontmatter/directive markers -- written to a distinct output directory outside the vault's own git repo; invoked via CLI and, once available, an MCP tool | 4 |
 
 ## 4. Non-functional requirements
 

@@ -482,6 +482,64 @@ PID lock guarantees exactly one process per vault. The job DB still runs
 with `PRAGMA journal_mode=WAL` for future concurrent reads (e.g. a status
 API being polled while the worker writes).
 
+### 4.20 Export workflow (Phase 4, on-demand)
+Produces a clean, portable copy of one or more notes for sharing/publishing
+outside Obsidian (e.g. a public GitHub repo, a gist, a blog) — Obsidian's
+markdown dialect doesn't render correctly (or at all) most other places, so
+this is a dedicated deterministic-first transform, not just a file copy.
+
+- **Trigger: on-demand only**, never reactive or scheduled. Exposed as a
+  CLI command (`vault-librarian export <note-or-folder> --dest <path>`)
+  and, once the MCP server (4.15) exists, the same operation as an MCP
+  tool — an "agent skill" Copilot/Claude can invoke directly, e.g. "export
+  this note and push it to my blog repo."
+- **Scope**: starting from one or more given notes, optionally follow
+  their outgoing `[[wikilinks]]`/`![[embeds]]` recursively (bounded,
+  configurable depth) to build the full export set, so a note that links
+  to supporting notes doesn't ship with dead links.
+- **Per-note transform pipeline** (deterministic-first, per design
+  principle 1; reuses the reactive pipeline's protected-span/segmentation
+  machinery from 4.5 where applicable):
+  1. Strip everything vault-librarian-internal: the frontmatter
+     automation-control block (4.4), `<agent-*>` directive markers and
+     their hidden reasoning comments (4.6), the `agent-ignore` markers
+     themselves (their protected *content* stays, just unwrapped) — none
+     of this is meant for an external reader.
+  2. Resolve `[[wikilinks]]` (including piped `[[Note|Text]]` and
+     heading/block refs `[[Note#Heading]]`) to standard markdown links.
+     A target inside the export set links to its exported relative path;
+     a target outside it is either dropped to plain text or left as a
+     clearly-flagged dead link, per config — a raw `[[wikilink]]` must
+     never ship into a GitHub-rendered file, since GitHub's renderer has
+     no idea what that syntax means.
+  3. Resolve `![[embeds]]`: image/file embeds become standard
+     `![alt](path)` with the attachment file copied alongside the
+     exported note (attachments are gitignored/local-only in the vault's
+     own repo — the export is a separate, self-contained output
+     directory); note transclusions (`![[Note]]` with no image
+     extension) are either inlined (splicing the referenced note's
+     content in, since GitHub markdown has no live-transclusion concept)
+     or converted to a plain link, per config.
+  4. Callouts (`> [!note]` etc.) pass through unchanged for the types
+     GitHub's own renderer already understands (`NOTE`/`TIP`/
+     `IMPORTANT`/`WARNING`/`CAUTION`); any other (custom/foldable
+     Obsidian-only) callout type degrades deterministically to a plain
+     blockquote with a bold label, instead of rendering as raw syntax.
+  5. Mermaid diagrams pass through unchanged (GitHub renders `mermaid`
+     fences natively) but are re-validated with the same 4.3 validator
+     first, so a broken diagram is never shipped into a public repo.
+- **Output** goes to a distinct export directory, entirely outside the
+  vault's own git safety-net repo. This is a different concern from the
+  Phase 4 backup workflow (4.10), which pushes the vault's *whole* private
+  history to a private remote — export instead produces a small, curated,
+  public-ready subset. Vault-librarian's job ends at producing that clean
+  directory; actually pushing it to GitHub is left to the user or their
+  own tooling/CI.
+- An LLM pass (rewriting Obsidian-specific phrasing, adding a short intro,
+  flagging prose that references un-exported private content) is an
+  opt-in config toggle, not the default — every step above is mechanical
+  and runs without one.
+
 ## 5. Tech stack summary
 
 | Concern | Choice |
@@ -534,6 +592,9 @@ src/vault_librarian/
     store.py
   mcp_server.py          # FastAPI + MCP SDK, 127.0.0.1-bound
   logging_setup.py       # tiered stdout logging
+  export/
+    pipeline.py          # link/embed/callout rewriting, internal-metadata stripping
+    cli.py                # `vault-librarian export` command wiring
 tests/
   fixtures/vault/        # small sample Obsidian vault for integration tests
   unit/                  # per-workflow, deterministic-first, mocked LLM (litellm mock_response)
